@@ -32,7 +32,6 @@ jobs:
     needs: [generate]
 
     steps:
-      - name: Mostrar needs.* y jobs.* (en reusable)
+      - name: Mostrar needs.* (outputs del job generate)
         run: |
           echo "needs.generate.outputs.result = ${{ needs.generate.outputs.result }}"
-          echo "jobs.generate.outputs.result = ${{ jobs.generate.outputs.result }}"
