@@ -1,0 +1,193 @@
+name: Context Variables Lab
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Entorno (ej: dev/stage/prod)"
+        required: true
+        default: "dev"
+      username:
+        description: "Nombre para probar inputs"
+        required: true
+        default: "Invitado"
+
+env:
+  GREETING: "Hola desde env global"
+  FILE_NAME: "context_dump.txt"
+
+jobs:
+  dump-basic:
+    name: Dump básico (github/env/vars/runner/secrets/steps)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Mostrar github.* (básico)
+        run: |
+          echo "github.repository = ${{ github.repository }}"
+          echo "github.event_name = ${{ github.event_name }}"
+          echo "github.actor = ${{ github.actor }}"
+          echo "github.ref = ${{ github.ref }}"
+          echo "github.sha = ${{ github.sha }}"
+          echo "github.workflow = ${{ github.workflow }}"
+          echo "github.run_id = ${{ github.run_id }}"
+          echo "github.run_number = ${{ github.run_number }}"
+          echo "github.job = ${{ github.job }}"
+
+      - name: Mostrar runner.*
+        run: |
+          echo "runner.os = ${{ runner.os }}"
+          echo "runner.arch = ${{ runner.arch }}"
+          echo "runner.temp = ${{ runner.temp }}"
+          echo "runner.tool_cache = ${{ runner.tool_cache }}"
+
+      - name: Mostrar env.* (global + job/step)
+        env:
+          STEP_ONLY: "Solo existe en este step"
+        run: |
+          echo "env.GREETING = ${{ env.GREETING }}"
+          echo "FILE_NAME (shell) = $FILE_NAME"
+          echo "STEP_ONLY (shell) = $STEP_ONLY"
+
+      - name: Mostrar vars.* (Variables del repo/entorno)
+        run: |
+          echo "vars.MY_GLOBAL_VAR = ${{ vars.MY_GLOBAL_VAR || 'NO_CONFIGURADA' }}"
+          echo "vars.API_ENDPOINT = ${{ vars.API_ENDPOINT || 'NO_CONFIGURADA' }}"
+
+      - name: Probar secrets.* SIN imprimir valores
+        env:
+          MY_SECRET_TOKEN: ${{ secrets.MY_SECRET_TOKEN }}
+        run: |
+          if [ -z "$MY_SECRET_TOKEN" ]; then
+            echo "secrets.MY_SECRET_TOKEN = (NO CONFIGURADO)"
+          else
+            echo "secrets.MY_SECRET_TOKEN = (CONFIGURADO)"
+            echo -n "$MY_SECRET_TOKEN" | wc -c | awk '{print "Longitud del secreto (chars) =", $1}'
+          fi
+          echo "⚠️ Nota: no se imprime el secreto por seguridad."
+
+      - name: Generar output de step (steps.<id>.outputs.<name>)
+        id: gen
+        run: |
+          echo "myOutput=Valor generado en step gen" >> "$GITHUB_OUTPUT"
+          echo "otherOutput=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Usar outputs del step anterior
+        run: |
+          echo "steps.gen.outputs.myOutput = ${{ steps.gen.outputs.myOutput }}"
+          echo "steps.gen.outputs.otherOutput = ${{ steps.gen.outputs.otherOutput }}"
+
+      - name: Volcar objetos completos (JSON) a archivo (para capturas)
+        run: |
+          {
+            echo "===== github (toJSON) ====="
+            echo '${{ toJSON(github) }}'
+            echo
+            echo "===== runner (toJSON) ====="
+            echo '${{ toJSON(runner) }}'
+            echo
+            echo "===== env (toJSON) ====="
+            echo '${{ toJSON(env) }}'
+          } > "$FILE_NAME"
+          echo "Generado $FILE_NAME"
+
+      - name: Subir artifact con el volcado
+        uses: actions/upload-artifact@v4
+        with:
+          name: context-dump
+          path: ${{ env.FILE_NAME }}
+
+      - name: Mostrar job.status (al final)
+        if: always()
+        run: |
+          echo "job.status = ${{ job.status }}"
+
+
+  matrix-demo:
+    name: Matrix demo (strategy/matrix)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12"]
+        exclude:
+          - os: windows-latest
+            python-version: "3.10"
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Mostrar matrix.*
+        run: |
+          echo "matrix.os = ${{ matrix.os }}"
+          echo "matrix.python-version = ${{ matrix.python-version }}"
+          echo "github.ref = ${{ github.ref }}"
+          echo "runner.os = ${{ runner.os }}"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Ejecutar Python y mostrar versión
+        run: |
+          python --version
+
+
+  produce-output:
+    name: Produce output para needs
+    runs-on: ubuntu-latest
+    outputs:
+      build_tag: ${{ steps.tag.outputs.build_tag }}
+      utc_time: ${{ steps.tag.outputs.utc_time }}
+
+    steps:
+      - name: Crear outputs del job
+        id: tag
+        run: |
+          echo "build_tag=build-${{ github.run_number }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "utc_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Mostrar outputs internos del job
+        run: |
+          echo "steps.tag.outputs.build_tag = ${{ steps.tag.outputs.build_tag }}"
+          echo "steps.tag.outputs.utc_time = ${{ steps.tag.outputs.utc_time }}"
+
+
+  consume-output:
+    name: Consume output con needs.*
+    runs-on: ubuntu-latest
+    needs: [produce-output]
+
+    steps:
+      - name: Mostrar needs.*
+        run: |
+          echo "needs.produce-output.outputs.build_tag = ${{ needs.produce-output.outputs.build_tag }}"
+          echo "needs.produce-output.outputs.utc_time = ${{ needs.produce-output.outputs.utc_time }}"
+
+
+  show-inputs:
+    name: Inputs demo (workflow_dispatch)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Mostrar inputs (si el evento es workflow_dispatch)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          echo "inputs.environment = ${{ inputs.environment }}"
+          echo "inputs.username = ${{ inputs.username }}"
+
+      - name: Mensaje si viene de push
+        if: ${{ github.event_name != 'workflow_dispatch' }}
+        run: |
+          echo "Este run viene de push, no hay inputs.* (solo en workflow_dispatch)."
+
+
+  call-reusable:
+    name: Llamar reusable workflow (para ver jobs context dentro del reusable)
+    uses: ./.github/workflows/reusable-context.yml
+    with:
+      input_value: "Hola desde el workflow principal"
