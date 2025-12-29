@@ -191,3 +191,14 @@ jobs:
     uses: ./.github/workflows/reusable-context.yml
     with:
       input_value: "Hola desde el workflow principal"
+
+  consume-reusable-output:
+    name: Consumir output del reusable (needs.call-reusable.outputs)
+    runs-on: ubuntu-latest
+    needs: [call-reusable]
+
+    steps:
+      - name: Mostrar output del reusable
+        run: |
+          echo "needs.call-reusable.outputs.result = ${{ needs.call-reusable.outputs.result }}"
+
