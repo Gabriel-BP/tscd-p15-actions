@@ -1,0 +1,38 @@
+name: Reusable Context Workflow
+
+on:
+  workflow_call:
+    inputs:
+      input_value:
+        required: true
+        type: string
+    outputs:
+      result:
+        description: "Resultado generado por el reusable"
+        value: ${{ jobs.generate.outputs.result }}
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    outputs:
+      result: ${{ steps.make.outputs.result }}
+
+    steps:
+      - name: Crear output
+        id: make
+        run: |
+          echo "result=OK-${{ inputs.input_value }}" >> "$GITHUB_OUTPUT"
+
+      - name: Mostrar inputs.* en reusable
+        run: |
+          echo "inputs.input_value = ${{ inputs.input_value }}"
+
+  show:
+    runs-on: ubuntu-latest
+    needs: [generate]
+
+    steps:
+      - name: Mostrar needs.* y jobs.* (en reusable)
+        run: |
+          echo "needs.generate.outputs.result = ${{ needs.generate.outputs.result }}"
+          echo "jobs.generate.outputs.result = ${{ jobs.generate.outputs.result }}"
